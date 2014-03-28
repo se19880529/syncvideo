@@ -1,0 +1,8 @@
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\bin\Debug\TestWindowMoveAndResize.exe
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\bin\Debug\TestWindowMoveAndResize.pdb
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\obj\Debug\TestWindowMoveAndResize.Properties.Resources.resources
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\obj\Debug\TestWindowMoveAndResize.csproj.GenerateResource.Cache
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\obj\Debug\TestWindowMoveAndResize.exe
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\obj\Debug\TestWindowMoveAndResize.pdb
+C:\Users\lk\Documents\Visual Studio 2008\Projects\TestWindowMoveAndResize\TestWindowMoveAndResize\obj\Debug\TestWindowMoveAndResize.Form1.resources
