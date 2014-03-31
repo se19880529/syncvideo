@@ -39,15 +39,15 @@ namespace DataStructure
                 return defaultValue;
             return (byte)((byte)(_buffer[byteindex] >> bitindex) & (byte)1);
         }
-        public int SetBit(long bit, bool reset)
+        public void SetBit(long bit, bool reset)
         {
             SetBit(bit, bit, reset);
         }
-        public int SetBit(long bitstart,long bitend, bool reset)
+        public void SetBit(long bitstart,long bitend, bool reset)
         {
             int byteindex, bitindex;
             GetBitPos(bitend, out byteindex, out bitindex);
-            if (_buffer = null || _buffer.Length <= byteindex)
+            if (_buffer == null || _buffer.Length <= byteindex)
             {
                 int oldlength = (_buffer != null)?_buffer.Length:0;
                 int[] buffer = new int[byteindex + 1];
@@ -63,25 +63,25 @@ namespace DataStructure
             }
             if ((reset && _default != 0) || (!reset && _default == 0))
             {
-                for (int i = bitend - bitstart; i >= 0; i--)
+                for (long i = bitend - bitstart; i >= 0; i--)
                 {
-                    int temp = bitend - i;
-                    int byteindex, bitindex;
-                    GetBitPos(temp, out byteindex, out bitindex);
+                    long temp = bitend - i;
+                    int byteindex2, bitindex2;
+                    GetBitPos(temp, out byteindex2, out bitindex2);
                     if ((temp % sizeof(int)) == 0 && i + 1 >= sizeof(int))
                     {
-                        _buffer[byteindex] = reset ? 0 : int.MaxValue;
+                        _buffer[byteindex2] = reset ? 0 : int.MaxValue;
                         i -= sizeof(int);
                     }
                     else
                     {
                         if (reset)
                         {
-                            _buffer[byteindex] &= ~(1 << bitindex);
+                            _buffer[byteindex2] &= ~(1 << bitindex2);
                         }
                         else
                         {
-                            _buffer[byteindex] |= (1 << bitindex);
+                            _buffer[byteindex2] |= (1 << bitindex2);
                         }
                     }
                 }
