@@ -35,9 +35,32 @@ namespace SyncVideoServer.Core
             Read(4);
             return BitConverter.ToInt32(buffer, 0);
         }
+
         public void Write(int val)
         {
             _stream.Write(BitConverter.GetBytes(val), 0, sizeof(int));
+        }
+
+        public byte ReadByte()
+        {
+            return (byte)_stream.ReadByte();
+        }
+
+        public void Write(byte val)
+        {
+            _stream.Write(new byte[] { val }, 0, sizeof(byte));
+        }
+
+        public byte[] ReadByteArray(int length)
+        {
+            byte[] arr = new byte[length];
+            _stream.Read(arr, 0, length);
+            return arr;
+        }
+
+        public void Write(byte[] val)
+        {
+            _stream.Write(val, 0, sizeof(byte) * val.Length);
         }
 
         public long ReadInt64()
@@ -82,26 +105,56 @@ namespace SyncVideoServer.Core
 
     public class FileSection
     {
-        public string md5;
+        public byte[] md5;
         public long startByte;
         public long endByte;
         public int downloadedByte;
     }
-    public class FileDiscripter
+    public class FileDescripter
     {
-        public long fileLength;
         public int sectionCount;
         public int sectionLength;
+        public byte md5Length;
+        public long fileLength;
+
         FileSection[] sections;
-        public static FileDiscripter LoadFromStream(FileStream stream)
+        public static FileDescripter LoadFromStream(FileStream stream)
         {
-            
-            FileDiscripter disc = new FileDiscripter();
+            FileDescripter desc = new FileDescripter();
+            FileStreamEasy file = new FileStreamEasy(stream);
             byte[] buffer = new byte[16];
-            //disc.fileLength = stream.Read(
-            return disc;
+            desc.fileLength = file.ReadInt64();
+            desc.sectionCount = file.ReadInt32();
+            desc.sectionLength = file.ReadInt32();
+            desc.md5Length = file.ReadByte();
+            desc.sections = new FileSection[desc.sectionCount];
+            for (int i = 0; i < desc.sectionCount; i++)
+            {
+                desc.sections[i] = new FileSection();
+                desc.sections[i].md5 = file.ReadByteArray(desc.md5Length);
+                desc.sections[i].downloadedByte = file.ReadInt32();
+                desc.sections[i].startByte = i * desc.sectionLength;
+                desc.sections[i].endByte = Math.Min(desc.sections[i].startByte + desc.sectionLength - 1, desc.fileLength - 1); 
+            }
+            return desc;
+        }
+        public static FileDescripter SaveToStream(FileDescripter desc, FileStream stream)
+        {
+            FileStreamEasy file = new FileStreamEasy(stream);
+            byte[] buffer = new byte[16];
+            file.Write(desc.fileLength);
+            file.Write(desc.sectionCount);
+            file.Write(desc.sectionLength);
+            file.Write(desc.md5Length);
+            for (int i = 0; i < desc.sectionCount; i++)
+            {
+                file.Write(desc.sections[i].md5);
+                file.Write(desc.sections[i].downloadedByte);
+            }
+            return desc;
         }
     }
+
     public class SourceFile
     {
         const string tempFileExt = "tmp";
