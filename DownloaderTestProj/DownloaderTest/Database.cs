@@ -118,6 +118,62 @@ namespace SyncVideoServer.Core
         public long fileLength;
 
         FileSection[] sections;
+
+        public static byte[] GetMD5(FileStream stream, long start, long end, int bitCount)
+        {
+            int step = 1000;
+            byte[] buffer = new byte[step];
+            System.Security.Cryptography.MD5 md5Algorithm = System.Security.Cryptography.MD5.Create();
+            stream.Seek(start, SeekOrigin.Begin);
+            /*
+            long ptr = start;
+            while (stream.Position <= end)
+            {
+                long count = Math.Min(step, end - stream.Position);
+                if (count <= 0)
+                    break;
+                stream.Read(buffer, 0, count);
+                md5Algorithm.
+            }*/
+            
+        }
+
+        public static FileDescripter CreateFromFile(string path, int sectLen, byte md5Len)
+        {
+            FileStream file = null;
+            try
+            {
+                file = File.Open(path, FileMode.Open);
+            }
+            catch (System.Exception exp)
+            {
+                return null;
+            }
+            FileDescripter res = new FileDescripter();
+            res.fileLength = file.Length;
+            res.md5Length = md5Len;
+            res.sectionLength = sectLen;
+            List<FileSection> list = new List<FileSection>();
+            long start = 0;
+            long end = res.sectionLength - 1;
+            while (start < res.fileLength)
+            {
+                end = Math.Min(res.fileLength - 1, start + res.sectionLength - 1);
+                FileSection fs = new FileSection
+                {
+                    startByte = start,
+                    endByte = end,
+                    downloadedByte = (int)(end - start + 1),
+                };
+
+                
+            }
+
+
+
+            return res;
+        }
+
         public static FileDescripter LoadFromStream(FileStream stream)
         {
             FileDescripter desc = new FileDescripter();
