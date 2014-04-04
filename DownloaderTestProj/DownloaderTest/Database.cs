@@ -118,6 +118,25 @@ namespace FileService
     }
     public class FileDescripter
     {
+        public static lib.ThreadPool workingPool = new ThreadPool();
+        public static long workid = -1;
+        class GenerateFileDescripterWorker : lib.ThreadTask
+        {
+            public class Context : lib.TaskContext
+            {
+                public FileSection section;
+                public string path;
+                public int bitCount;
+            }
+            public override void DoWork(TaskContext context)
+            {
+                Context data = context as Context;
+                FileStream fs = File.Open(data.path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                data.section.md5 = GetMD5(fs, data.section.startByte, data.section.endByte, data.bitCount);
+                fs.Close();
+            }
+        }
+
         public int sectionCount;
         public int sectionLength;
         public byte md5Length;
@@ -165,12 +184,18 @@ namespace FileService
             return res;
         }
 
+        static void _EnsureThreadPool()
+        {
+            if (workid < 0)
+                workid = workingPool.AddWorker(new GenerateFileDescripterWorker(), 0);
+        }
+
         public static FileDescripter CreateFromFile(string path, int sectLen, byte md5Len)
         {
             FileStream file = null;
             try
             {
-                file = File.Open(path, FileMode.Open);
+                file = File.Open(path, FileMode.Open, FileAccess.Read);
             }
             catch (System.Exception exp)
             {
@@ -183,6 +208,7 @@ namespace FileService
             List<FileSection> list = new List<FileSection>();
             long start = 0;
             long end = res.sectionLength - 1;
+            _EnsureThreadPool();
             while (start < res.fileLength)
             {
                 end = Math.Min(res.fileLength - 1, start + res.sectionLength - 1);
@@ -192,13 +218,16 @@ namespace FileService
                     endByte = end,
                     downloadedByte = (int)(end - start + 1),
                 };
-                fs.md5 = GetMD5(file, start, end, md5Len);
                 list.Add(fs);
+                workingPool.AddJob(new GenerateFileDescripterWorker.Context{ section = fs, bitCount = md5Len, path = path }, workid);
                 start = end + 1;
             }
             res.sections = list.ToArray();
             res.sectionCount = list.Count();
             file.Close();
+            workingPool.Start();
+            while(workingPool.HasUnfinishedJob(workid))
+                System.Threading.Thread.Sleep(1);
             return res;
         }
 

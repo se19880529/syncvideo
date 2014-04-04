@@ -17,18 +17,27 @@ namespace lib
         }
     }
 
-    private class Worker
+    class Worker
     {
-        public ThreadTask Worker;
+        public ThreadTask worker;
         public long id; 
         public long priority = 0;
         public List<TaskContext> Jobs = new List<TaskContext>();
+        List<TaskContext> ExecutingJobs = new List<TaskContext>();
         public bool HasJob()
         {
             return Jobs.Count > 0;
         }
+        public bool HasUnfinishedJob()
+        {
+            return Jobs.Count > 0 || ExecutingJobs.Count > 0 ;
+        }
         public void AddJob(TaskContext job)
         {
+            if (job == null)
+            {
+                worker.GetHashCode();
+            }
             Jobs.Add(job);
         }
         public TaskContext PopJob()
@@ -40,6 +49,17 @@ namespace lib
                 return job;
             }
             return null;
+        }
+        public void DoAJob()
+        {
+            if (Jobs.Count > 0)
+            {
+                TaskContext job = Jobs[0];
+                Jobs.RemoveAt(0);
+                ExecutingJobs.Add(job);
+                worker.DoWork(job);
+                ExecutingJobs.Remove(job);
+            }
         }
     }
 
@@ -65,6 +85,16 @@ namespace lib
                 return false;
         }
 
+        public bool HasUnfinishedJob(long workerid)
+        {
+            LinkedListNode<Worker> worker = null;
+            if (_workerList.TryGetValue(workerid, out worker))
+            {
+                return worker.Value.HasUnfinishedJob();
+            }
+            else
+                return false;
+        }
         //return wheather worker exists
         public bool AddJob(TaskContext job, long workerid)
         {
@@ -76,6 +106,22 @@ namespace lib
             }
             else
                 return false;
+        }
+
+        public void Start()
+        {
+            _destThreadCount = 100;
+            _PowerThePool();
+        }
+
+        public void Stop()
+        {
+            _destThreadCount = 0;
+        }
+
+        public bool IsStoped()
+        {
+            return _threadCount == 0;
         }
 
         #region internal_implement
@@ -90,7 +136,7 @@ namespace lib
         LinkedList<Worker> _workerPriorityList = new LinkedList<Worker>();
         LinkedListNode<Worker> _InsertNewWorker(ThreadTask task, long workid)
         {
-            Worker work = new Worker() { Worker = task, priority = 0, id = workid };
+            Worker work = new Worker() { worker = task, priority = 0, id = workid };
             LinkedListNode<Worker> node = new LinkedListNode<Worker>(work);
             _workerList[workid] = node;
             _workerPriorityList.AddLast(node);
@@ -119,9 +165,7 @@ namespace lib
             {
                 if (node.Value.HasJob())
                 {
-                    var job = node.Value.PopJob();
-                    node.Value.Worker.DoWork(job);
-                    nojob = false;
+                    node.Value.DoAJob();
                     break;
                 }
                 node = node.Next;
@@ -130,7 +174,7 @@ namespace lib
         }
 
         int _threadCount = 0;
-        int _destThreadCount = 10;
+        int _destThreadCount = 100;
         //pool said: give me strength, i am xirui
         void _PowerThePool()
         {
@@ -149,6 +193,11 @@ namespace lib
                     System.Threading.Thread.Sleep(0);
                 else
                     System.Threading.Thread.Sleep(10);
+                if (_threadCount > _destThreadCount)
+                {
+                    _threadCount--;
+                    break;
+                }
             }
         }
 

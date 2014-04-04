@@ -33,7 +33,7 @@ namespace DownloaderTest
 
         private void button2_Click(object sender, EventArgs e)
         {
-            FileService.FileDescripter desc = FileService.FileDescripter.CreateFromFile(filePath, 4096000, 16);
+            FileService.FileDescripter desc = FileService.FileDescripter.CreateFromFile(filePath, 4096000, 8);
             textFileDescripter.Text = desc.ToString();
         }
     }

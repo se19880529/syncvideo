@@ -12,11 +12,11 @@ namespace lib
             StringBuilder builder = new StringBuilder(name);
             builder.Append("{");
 
-            for(int i = 0; i < vals.Length; i++)
+            for (int i = 0; i < vals.Length; i++)
             {
-                if(i > 0)
+                if (i > 0)
                     builder.Append(",");
-                builder.AppendFormat("{0}:{1}", fields[i],vals[i]);
+                builder.AppendFormat("{0}:{1}", fields[i], vals[i]);
             }
 
             builder.Append("}");
