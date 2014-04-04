@@ -23,6 +23,16 @@ namespace lib
             return builder.ToString();
         }
 
+        public static string GetFileExt(string fn)
+        {
+            fn = fn.Replace("\\", "/");
+            int ind = fn.LastIndexOf(".");
+            if (ind < 0 || fn.LastIndexOf("/") > ind)
+                return "";
+            else
+                return fn.Substring(ind + 1);
+        }
+
         public static string ByteToStr(byte[] buf)
         {
             StringBuilder builder = new StringBuilder();

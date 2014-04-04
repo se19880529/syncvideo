@@ -123,7 +123,7 @@ namespace FileService
         public byte md5Length;
         public long fileLength;
 
-        FileSection[] sections;
+        public FileSection[] sections;
 
         public override string ToString()
         {
@@ -242,11 +242,74 @@ namespace FileService
     public class SourceFile
     {
         const string tempFileExt = "tmp";
-        List<FileSection> sectionDiscripter = new List<FileSection>();
+        const string configFileExt = "cfg";
+        FileDescripter _config;
         FileStream _file;
-        public static SourceFile Open(string fn)
+
+        public FileDescripter GetDescripter()
+        {
+            return _config;
+        }
+
+        public long GetFileBits(long start, long end, byte[] buffer, int offset)
+        {
+            if (start < 0)
+                start = 0;
+            end = (buffer.Length - offset < end - start + 1) ? (buffer.Length - offset + start - 1) : end;
+            end = _file.Length <= end?_file.Length - 1:end;
+            if (end < start)
+                return 0;
+            _file.Seek(start, SeekOrigin.Begin);
+            _file.Read(buffer, offset, (int)(end - start + 1));
+            return end - start + 1;
+        }
+
+        public static SourceFile OpenExist(string fn)
         {
             SourceFile res = new SourceFile();
+            var _file = File.Open(fn, FileMode.Open, FileAccess.Read);
+            res._config = FileDescripter.CreateFromFile(fn, 51200000, 16);
+            return res;
+        }
+
+        public static SourceFile OpenDownloading(string fn)
+        {
+            string configFile = "";
+            string tmpFile = "";
+            string ext = Utility.GetFileExt(fn);
+            if (ext.Equals(configFileExt, StringComparison.CurrentCultureIgnoreCase))
+            {
+                configFile = fn;
+            }
+            else if (ext == "")
+            {
+                configFile = fn + "." + configFileExt;
+            }
+            else if (ext.Equals(tempFileExt, StringComparison.CurrentCultureIgnoreCase))
+            {
+                configFile = fn.Substring(0, fn.LastIndexOf(".")) + "." + configFileExt;
+            }
+            else
+            {
+                configFile = fn;
+            }
+
+            if (!File.Exists(configFile))
+                return null;
+            tmpFile = configFile.Substring(0, configFile.LastIndexOf(".")) + "." + tempFileExt;
+            FileStream file = File.Open(configFile, FileMode.Open, FileAccess.Read);
+            SourceFile res = new SourceFile();
+            res._config = FileDescripter.LoadFromStream(file);
+            res._file = File.Open(tmpFile, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+            return res;
+        }
+
+        public static SourceFile CreateEmptyFromDescripter(FileDescripter desc, string path)
+        {
+            SourceFile res = new SourceFile();
+            res._config = desc;
+            res._file = File.Open(path, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+            res._file.SetLength(desc.fileLength);
             return res;
         }
     }

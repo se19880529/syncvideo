@@ -109,7 +109,8 @@ namespace DataStructure
         public bool isShowMovie;
         public int maxConnection;
         public int currentConnection;
-        public BitMap sectionState;
+        public int sectionAsked;
+        public int sectionDownloaded;
     }
 
     public class MovieInfo : ISerializableData
