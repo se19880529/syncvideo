@@ -280,6 +280,70 @@ namespace FileService
             return _config;
         }
 
+        public void GetFirstDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
+        {
+            actureStart = -1;
+            actureEnd = -1;
+            int indexStart = (int)(start / _config.sectionLength);
+            int indexEnd = (int)(end / _config.sectionLength);
+            for(int i = indexStart; i <= indexEnd; i++)
+            {
+                FileSection sect = _config.sections[i];
+                if (actureStart < 0)
+                {
+                    if (sect.downloadedByte > 0)
+                        actureStart = sect.startByte;
+                }
+                if (actureStart >= 0 && (sect.downloadedByte < sect.startByte - sect.endByte + 1 || _config.sectionCount - 1 == i ||  _config.sections[i + 1].downloadedByte == 0))
+                {
+                    actureEnd = sect.downloadedByte + sect.startByte - 1;
+                }
+            }
+            if (actureStart > end || actureEnd < start)
+            {
+                actureStart = -1;
+                actureEnd = -1;
+            }
+            else
+            {
+                actureStart = Math.Max(start, actureStart);
+                actureEnd = Math.Min(end, actureEnd);
+            }
+        }
+
+        public void GetMaxDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
+        {
+            actureStart = -1;
+            actureEnd = -1;
+            long currentStart = -1;
+            int startIndex = (int)(start / _config.sectionLength);
+            int endIndex = (int)(end / _config.sectionLength);
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                FileSection sect = _config.sections[i];
+                if (currentStart < 0)
+                {
+                    if (sect.downloadedByte > 0 && sect.downloadedByte + sect.startByte > start)
+                    {
+                        currentStart = Math.Max(sect.startByte, start);
+                    }
+                }
+                if (currentStart >= 0)
+                {
+                    if (sect.downloadedByte < sect.endByte - sect.startByte + 1 || _config.sectionLength - 1 == i || _config.sections[i + 1].downloadedByte == 0)
+                    {
+                        long currentEnd = Math.Min(sect.startByte + sect.downloadedByte - 1, end);
+                        if (actureEnd - actureStart < currentEnd - currentStart)
+                        {
+                            actureEnd = currentEnd;
+                            actureStart = currentStart;
+                            currentStart = -1;
+                        }
+                    }
+                }
+            }
+        }
+
         public long GetFileBits(long start, long end, byte[] buffer, int offset)
         {
             if (start < 0)

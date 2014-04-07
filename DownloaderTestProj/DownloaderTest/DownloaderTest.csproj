@@ -48,6 +48,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ByteStream.cs" />
+    <Compile Include="Client.cs" />
     <Compile Include="Database.cs" />
     <Compile Include="DataStructure.cs" />
     <Compile Include="FileDownloader.cs" />
@@ -81,6 +83,7 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
+    <Compile Include="Protocol.cs" />
     <Compile Include="Server.cs" />
     <Compile Include="ThreadPool.cs" />
     <Compile Include="Utility.cs" />
