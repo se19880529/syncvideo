@@ -19,7 +19,7 @@ namespace FileService
     class ShareInfoQuery : ServerProtocol
     {
         public const int TYPE = 1;
-        public byte method;         //0:first block, 1: largest block:
+        public byte method;         //0:first block, 1: largest block, 2: last block
         public long startByte;
         public int queryLength;
         public ShareInfoQuery() : base(TYPE) { }
@@ -213,6 +213,7 @@ namespace FileService
             if (p != null)
             {
                 Handler(p, socket);
+
             }
         }
 

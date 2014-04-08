@@ -280,6 +280,37 @@ namespace FileService
             return _config;
         }
 
+        public void GetLastDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
+        {
+            actureStart = -1;
+            actureEnd = -1;
+            int indexStart = (int)(start / _config.sectionLength);
+            int indexEnd = (int)(end / _config.sectionLength);
+            for (int i = indexEnd; i >= indexStart; i--)
+            {
+                FileSection sect = _config.sections[i];
+                if (actureEnd < 0)
+                {
+                    if (sect.downloadedByte > 0)
+                        actureEnd = sect.startByte + sect.downloadedByte - 1;
+                }
+                if (actureEnd >= 0 && (sect.downloadedByte < sect.startByte - sect.endByte + 1 || _config.sectionCount - 1 == i || _config.sections[i + 1].downloadedByte == 0))
+                {
+                    actureEnd = sect.downloadedByte + sect.startByte - 1;
+                }
+            }
+            if (actureStart > end || actureEnd < start)
+            {
+                actureStart = -1;
+                actureEnd = -1;
+            }
+            else
+            {
+                actureStart = Math.Max(start, actureStart);
+                actureEnd = Math.Min(end, actureEnd);
+            }
+        }
+
         public void GetFirstDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
         {
             actureStart = -1;
