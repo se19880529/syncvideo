@@ -106,91 +106,336 @@ namespace FileService
 
     public class FileSection
     {
-        public byte[] md5;
         public long startByte;
         public long endByte;
-        public int downloadedByte;
         public override string ToString()
         {
-            return Utility.GetClassDesc("FileSection",new  string[]{ "startByte", "endByte", "downloadedByte", "md5"},
-                                   new string[]{ startByte.ToString(), endByte.ToString(), downloadedByte.ToString(), Utility.ByteToStr(md5)}); 
+            return Utility.GetClassDesc("FileSection",new  string[]{ "startByte", "endByte",},
+                                   new string[]{ startByte.ToString(), endByte.ToString(),}); 
         }
     }
-    public class FileDescripter
+    public class FileSectionContainer
     {
-        public static lib.ThreadPool workingPool = new ThreadPool();
-        public static long workid = -1;
-        class GenerateFileDescripterWorker : lib.ThreadTask
-        {
-            public class Context : lib.TaskContext
-            {
-                public FileSection section;
-                public string path;
-                public int bitCount;
-            }
-            public override void DoWork(TaskContext context)
-            {
-                Context data = context as Context;
-                FileStream fs = File.Open(data.path, FileMode.Open, FileAccess.Read, FileShare.Read);
-                data.section.md5 = GetMD5(fs, data.section.startByte, data.section.endByte, data.bitCount);
-                fs.Close();
-            }
-        }
-
-        public int sectionCount;
-        public int sectionLength;
-        public byte md5Length;
-        public long fileLength;
-
-        public FileSection[] sections;
+        public const int CompareMethodLarge = 1;
+        public const int CompareMethodLess = 0;
+        public const int SelectMethodStartPosition = 1;
+        public const int SelectMethodEndPosition = 0;
+        FileSection[] sections = new FileSection[0];                     //按递增排列
 
         public override string ToString()
         {
-            return Utility.GetClassDesc("FileDescripter", new string[]{"sectionCount", "sectionLength", "md5Length", "fileLength", "sections"}, 
-                new string[]{sectionCount.ToString(), sectionLength.ToString(), md5Length.ToString(), fileLength.ToString(), Utility.ArrayToStr(sections)});
+            return Utility.GetClassDesc("FileSectionContainer", new string[] { "sections", },
+                                   new string[]{Utility.ArrayToStr(sections)});
         }
 
-
-        static byte[] _md5Buffer = new byte[1024000];
-        public static byte[] GetMD5(FileStream stream, long start, long end, int bitCount)
+        public FileSectionContainer Assign(FileSectionContainer other)
         {
-            int step = _md5Buffer.Length / 2;
-            System.Security.Cryptography.MD5 md5Algorithm = System.Security.Cryptography.MD5.Create("MD5");
-            stream.Seek(start, SeekOrigin.Begin);
-            
-            long ptr = start;
-            while (stream.Position <= end)
+            FileSectionContainer res = new FileSectionContainer();
+            if (other.sections == null)
+                return res;
+            res.sections = new FileSection[other.sections.Length];
+            for (int i = 0; i < other.sections.Length; i++)
             {
-                long count = Math.Min(step, end - stream.Position);
-                if (count <= 0)
-                    break;
-                if (end - stream.Position >= step)
-                {
-                    stream.Read(_md5Buffer, 0, step);
-                    md5Algorithm.TransformBlock(_md5Buffer, 0, step, _md5Buffer, step);
-                }
-                else
-                {
-                    stream.Read(_md5Buffer, 0, (int)(end - stream.Position + 1));
-                    md5Algorithm.TransformFinalBlock(_md5Buffer, 0, step);
-                    break;
-                }
-            }
-            byte[] res = new byte[bitCount];
-            for (int i = 0; i < bitCount; i++)
-            {
-                res[i] = md5Algorithm.Hash[i % md5Algorithm.Hash.Length];
+                res.sections[i] = new FileSection { startByte = other.sections[i].startByte, endByte = other.sections[i].endByte };
             }
             return res;
         }
 
-        static void _EnsureThreadPool()
+        public static FileSectionContainer LoadFromStream(FileStream stream)
         {
-            if (workid < 0)
-                workid = workingPool.AddWorker(new GenerateFileDescripterWorker(), 0);
+            FileStreamEasy easy = new FileStreamEasy(stream);
+            FileSectionContainer res = new FileSectionContainer();
+            res.sections = new FileSection[easy.ReadInt64()];
+            for (int i = 0; i < res.sections.Length; i++)
+            {
+                res.sections[i] = new FileSection();
+                res.sections[i].startByte = easy.ReadInt64();
+                res.sections[i].endByte = easy.ReadInt64();
+            }
+            return res;
         }
 
-        public static FileDescripter CreateFromFile(string path, int sectLen, byte md5Len)
+        public void SaveToStream(FileStream stream)
+        {
+            FileStreamEasy easy = new FileStreamEasy(stream);
+            if (sections == null)
+                sections = new FileSection[0];
+            easy.Write((long)sections.Length);
+            for (int i = 0; i < sections.Length; i++)
+            {
+                easy.Write(sections[i].startByte);
+                easy.Write(sections[i].endByte);
+            }
+            stream.Flush();
+        }
+
+        //将start和end融合进container中
+        public void MergeSection(long start, long end)
+        {
+            long idStart = _GetBorderSection(start, CompareMethodLarge, SelectMethodEndPosition);
+            long idEnd = _GetBorderSection(end, CompareMethodLess, SelectMethodStartPosition);
+            if (idStart < 0 && idEnd < 0)               //this means we have no element in sections
+            {
+                sections = new FileSection[] { new FileSection { endByte = end, startByte = start } };
+            }
+            else if (idStart < 0 && idEnd >= 0)          //this means section to merge is in whole right
+            {
+                FileSection[] newSections = new FileSection[sections.Length + 1];
+                Array.Copy(sections, 0, newSections, 0, sections.Length);
+                newSections[sections.Length] = new FileSection { startByte = start, endByte = end };
+            }
+            else if (idStart >= 0 && idEnd < 0)      //this means section to merge is in whole left
+            {
+                FileSection[] newSections = new FileSection[sections.Length + 1];
+                Array.Copy(sections, 0, newSections, 1, sections.Length);
+                newSections[0] = new FileSection { startByte = start, endByte = end };
+            }
+            else// this means section to merge is in middle of whole
+            {
+                FileSection[] newSections = new FileSection[sections.Length - (idEnd - idStart)];
+                Array.Copy(sections, 0, newSections, 0, idStart);
+                Array.Copy(sections, idEnd + 1, newSections, idStart + 1, sections.Length - idEnd - 1);
+                newSections[idStart] = new FileSection { startByte = Math.Min(sections[idStart].startByte, start), endByte = Math.Max(sections[idEnd].endByte, end) };
+                sections = newSections;
+            }
+        }
+
+        public void DelSection(long start, long end)
+        {
+            long idStart = _GetBorderSection(start, CompareMethodLarge, SelectMethodEndPosition);
+            if (idStart >= 0 && sections[idStart].startByte <= start && sections[idStart].endByte >= end)
+            {
+                if (sections[idStart].startByte == start && sections[idStart].endByte > end)
+                {
+                    sections[idStart].startByte = end + 1;
+                }
+                else if (sections[idStart].endByte == end && sections[idStart].startByte < start)
+                {
+                    sections[idStart].endByte = start - 1;
+                }
+                else if(sections[idStart].endByte == end && sections[idStart].startByte == start)
+                {
+                    FileSection[] newSection = new FileSection[sections.Length - 1];
+                    Array.Copy(sections, 0, newSection, 0, idStart);
+                    Array.Copy(sections, idStart, newSection, idStart + 1, sections.Length - 1 - idStart);
+                    sections = newSection;
+                }
+                else if (sections[idStart].endByte > end && sections[idStart].startByte < start)
+                {
+                    FileSection[] newSection = new FileSection[sections.Length + 1];
+                    Array.Copy(sections, 0, newSection, 0, idStart);
+                    Array.Copy(sections, idStart + 2, newSection, idStart + 1, sections.Length - 1 - idStart);
+                    newSection[idStart] = new FileSection { startByte = sections[idStart].startByte, endByte = start - 1 };
+                    newSection[idStart + 1] = new FileSection { startByte = end + 1, endByte = sections[idStart].endByte };
+                    sections = newSection;
+                }
+            }
+        }
+
+        public long GetSectionCount()
+        {
+            return sections.Length;
+        }
+        public bool GetSection(long index, out long start, out long end)
+        {
+            start = -1;
+            end = -1;
+            if (index < 0 || index >= sections.Length)
+                return false;
+            else
+            {
+                start = sections[index].startByte;
+                end = sections[index].endByte;
+                return true;
+            }
+        }
+        public bool GetLargestSectionBetween(long start, long end, out long outstart, out long outend)
+        {
+            outstart = -2;
+            outend = -1;
+            long idStart = _GetBorderSection(start, CompareMethodLarge, SelectMethodEndPosition);
+            long idEnd = _GetBorderSection(end, CompareMethodLess, SelectMethodStartPosition);
+            if (idEnd < 0 || idStart < 0)
+                return false;
+            for (long i = idStart; i <= idEnd; i++)
+            {
+                long min = Math.Max(start, sections[i].startByte);
+                long max = Math.Min(end, sections[i].endByte);
+                if (max - min + 1 > outend - outstart + 1)
+                {
+                    outstart = min;
+                    outend = max;
+                }
+            }
+            return true;
+        }
+        public bool GetFirstSectionBetween(long start, long end, out long outstart, out long outend)
+        {
+            outstart = -2;
+            outend = -1;
+            long idStart = _GetBorderSection(start, CompareMethodLarge, SelectMethodEndPosition);
+            long idEnd = _GetBorderSection(end, CompareMethodLess, SelectMethodStartPosition);
+            if (idEnd < 0 || idStart < 0)
+                return false;
+            outstart = Math.Max(start, sections[idStart].startByte);
+            outend = Math.Min(end, sections[idStart].endByte);
+            return true;
+        }
+        public bool GetLastSectionBetween(long start, long end, out long outstart, out long outend)
+        {
+            outstart = -2;
+            outend = -1;
+            long idStart = _GetBorderSection(start, CompareMethodLarge, SelectMethodEndPosition);
+            long idEnd = _GetBorderSection(end, CompareMethodLess, SelectMethodStartPosition);
+            if (idEnd < 0 || idStart < 0)
+                return false;
+            outstart = Math.Max(start, sections[idEnd].startByte);
+            outend = Math.Min(end, sections[idEnd].endByte);
+            return true;
+        }
+        //获取边界section的函数(内部函数)
+        //CompareMethod: CompareMethodLess: 最后一个小于等于pos， CompareMethodLarge: 第一个大于等于pos
+        //SelectMethod: SelectMethodStartPosition: pos和section的start相比, SelectMethodEndPosition: pos和section的end相比
+        long _GetBorderSection(long pos, int CompareMethod, int SelectMethod)
+        {
+            if (sections.Length == 0)
+                return -1;
+            long l = 0, h = GetSectionCount() - 1;
+            long m = 0;
+            long v = 0;
+            while (h > l)
+            {
+                switch (CompareMethod)
+                {
+                    case CompareMethodLess:
+                        m = (l + h + 1) / 2;
+                        break;
+                    default:
+                        m = (l + h) / 2;
+                        break;
+                }
+                switch (SelectMethod)
+                {
+                    case SelectMethodEndPosition:
+                        v = sections[m].endByte;
+                        break;
+                    default:
+                        v = sections[m].startByte;
+                        break;
+                }
+                switch (CompareMethod)
+                {
+                    case CompareMethodLess:
+                        if (pos < v)
+                        {
+                            h = m - 1;
+                        }
+                        else
+                        {
+                            l = m;
+                        }
+                        break;
+                    default:
+                        if (pos <= v)
+                        {
+                            h = m;
+                        }
+                        else
+                        {
+                            l = m + 1;
+                        }
+                        break;
+                }
+            }
+            switch (CompareMethod)
+            {
+                case CompareMethodLess:
+                    m = h;
+                    break;
+                default:
+                    m = l;
+                    break;
+            }
+            switch (SelectMethod)
+            {
+                case SelectMethodEndPosition:
+                    v = sections[m].endByte;
+                    break;
+                default:
+                    v = sections[m].startByte;
+                    break;
+            }
+            switch (CompareMethod)
+            {
+                case CompareMethodLess:
+                    if (v > pos)
+                        return -1;
+                    break;
+                default:
+                    if (v < pos)
+                        return -1;
+                    break;
+            }
+            return m;
+        }
+    }
+
+    public class FileDescripter
+    {
+        public long fileLength;
+
+        FileSectionContainer actualSections;
+        FileSectionContainer expectedSections;
+
+        public override string ToString()
+        {
+            return Utility.GetClassDesc("FileDescripter", new string[] { "fileLength", "actualSections", "expectedSections" },
+                new string[] {  fileLength.ToString(), actualSections.ToString(), expectedSections.ToString() });
+        }
+
+
+        public void GetLastSectionBetween(bool isExpected, long start, long end, out long actureStart, out long actureEnd)
+        {
+            if (isExpected)
+                expectedSections.GetLastSectionBetween(start, end, out actureStart, out actureEnd);
+            else
+                actualSections.GetLastSectionBetween(start, end, out actureStart, out actureEnd);
+
+        }
+
+        public void GetFirstSectionBetween(bool isExpected, long start, long end, out long actureStart, out long actureEnd)
+        {
+            if (isExpected)
+                expectedSections.GetFirstSectionBetween(start, end, out actureStart, out actureEnd);
+            else
+                actualSections.GetFirstSectionBetween(start, end, out actureStart, out actureEnd);
+        }
+
+        public void GetMaxSectionBetween(bool isExpected, long start, long end, out long actureStart, out long actureEnd)
+        {
+            if (isExpected)
+                expectedSections.GetLargestSectionBetween(start, end, out actureStart, out actureEnd);
+            else
+                actualSections.GetLargestSectionBetween(start, end, out actureStart, out actureEnd);
+        }
+
+        public void ExpandExpectedSection(long start, long end)
+        {
+            expectedSections.MergeSection(start, end);
+        }
+
+        public void ModifyExpectedSection(long oldstart, long oldend, long newstart, long newend)
+        {
+            expectedSections.DelSection(oldstart, oldend);
+            expectedSections.MergeSection(newstart, newend);
+        }
+
+        public void MergeSection(long start, long end)
+        {
+            actualSections.MergeSection(start, end);
+        }
+
+        public static FileDescripter CreateFromFile(string path)
         {
             FileStream file = null;
             try
@@ -203,31 +448,11 @@ namespace FileService
             }
             FileDescripter res = new FileDescripter();
             res.fileLength = file.Length;
-            res.md5Length = md5Len;
-            res.sectionLength = sectLen;
-            List<FileSection> list = new List<FileSection>();
-            long start = 0;
-            long end = res.sectionLength - 1;
-            _EnsureThreadPool();
-            while (start < res.fileLength)
-            {
-                end = Math.Min(res.fileLength - 1, start + res.sectionLength - 1);
-                FileSection fs = new FileSection
-                {
-                    startByte = start,
-                    endByte = end,
-                    downloadedByte = (int)(end - start + 1),
-                };
-                list.Add(fs);
-                workingPool.AddJob(new GenerateFileDescripterWorker.Context{ section = fs, bitCount = md5Len, path = path }, workid);
-                start = end + 1;
-            }
-            res.sections = list.ToArray();
-            res.sectionCount = list.Count();
+            res.actualSections = new FileSectionContainer();
+            res.actualSections.MergeSection(0, file.Length - 1);
+            res.expectedSections = new FileSectionContainer();
+            res.expectedSections.Assign(res.actualSections);
             file.Close();
-            workingPool.Start();
-            while(workingPool.HasUnfinishedJob(workid))
-                System.Threading.Thread.Sleep(1);
             return res;
         }
 
@@ -237,18 +462,9 @@ namespace FileService
             FileStreamEasy file = new FileStreamEasy(stream);
             byte[] buffer = new byte[16];
             desc.fileLength = file.ReadInt64();
-            desc.sectionCount = file.ReadInt32();
-            desc.sectionLength = file.ReadInt32();
-            desc.md5Length = file.ReadByte();
-            desc.sections = new FileSection[desc.sectionCount];
-            for (int i = 0; i < desc.sectionCount; i++)
-            {
-                desc.sections[i] = new FileSection();
-                desc.sections[i].md5 = file.ReadByteArray(desc.md5Length);
-                desc.sections[i].downloadedByte = file.ReadInt32();
-                desc.sections[i].startByte = i * desc.sectionLength;
-                desc.sections[i].endByte = Math.Min(desc.sections[i].startByte + desc.sectionLength - 1, desc.fileLength - 1); 
-            }
+            desc.actualSections = FileSectionContainer.LoadFromStream(stream);
+            desc.expectedSections = new FileSectionContainer();
+            desc.expectedSections.Assign(desc.actualSections);
             return desc;
         }
         public static FileDescripter SaveToStream(FileDescripter desc, FileStream stream)
@@ -256,14 +472,7 @@ namespace FileService
             FileStreamEasy file = new FileStreamEasy(stream);
             byte[] buffer = new byte[16];
             file.Write(desc.fileLength);
-            file.Write(desc.sectionCount);
-            file.Write(desc.sectionLength);
-            file.Write(desc.md5Length);
-            for (int i = 0; i < desc.sectionCount; i++)
-            {
-                file.Write(desc.sections[i].md5);
-                file.Write(desc.sections[i].downloadedByte);
-            }
+            desc.actualSections.SaveToStream(stream);
             return desc;
         }
     }
@@ -280,99 +489,29 @@ namespace FileService
             return _config;
         }
 
-        public void GetLastDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
+        public void GetLastSectionBetween(bool isExpected, long start, long end, out long actureStart, out long actureEnd)
         {
-            actureStart = -1;
-            actureEnd = -1;
-            int indexStart = (int)(start / _config.sectionLength);
-            int indexEnd = (int)(end / _config.sectionLength);
-            for (int i = indexEnd; i >= indexStart; i--)
-            {
-                FileSection sect = _config.sections[i];
-                if (actureEnd < 0)
-                {
-                    if (sect.downloadedByte > 0)
-                        actureEnd = sect.startByte + sect.downloadedByte - 1;
-                }
-                if (actureEnd >= 0 && (sect.downloadedByte < sect.startByte - sect.endByte + 1 || _config.sectionCount - 1 == i || _config.sections[i + 1].downloadedByte == 0))
-                {
-                    actureEnd = sect.downloadedByte + sect.startByte - 1;
-                }
-            }
-            if (actureStart > end || actureEnd < start)
-            {
-                actureStart = -1;
-                actureEnd = -1;
-            }
-            else
-            {
-                actureStart = Math.Max(start, actureStart);
-                actureEnd = Math.Min(end, actureEnd);
-            }
+            _config.GetLastSectionBetween(isExpected, start, end, out actureStart, out actureEnd);
         }
 
-        public void GetFirstDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
+        public void GetFirstSectionBetween(bool isExpected, long start, long end, out long actureStart, out long actureEnd)
         {
-            actureStart = -1;
-            actureEnd = -1;
-            int indexStart = (int)(start / _config.sectionLength);
-            int indexEnd = (int)(end / _config.sectionLength);
-            for(int i = indexStart; i <= indexEnd; i++)
-            {
-                FileSection sect = _config.sections[i];
-                if (actureStart < 0)
-                {
-                    if (sect.downloadedByte > 0)
-                        actureStart = sect.startByte;
-                }
-                if (actureStart >= 0 && (sect.downloadedByte < sect.startByte - sect.endByte + 1 || _config.sectionCount - 1 == i ||  _config.sections[i + 1].downloadedByte == 0))
-                {
-                    actureEnd = sect.downloadedByte + sect.startByte - 1;
-                }
-            }
-            if (actureStart > end || actureEnd < start)
-            {
-                actureStart = -1;
-                actureEnd = -1;
-            }
-            else
-            {
-                actureStart = Math.Max(start, actureStart);
-                actureEnd = Math.Min(end, actureEnd);
-            }
+            _config.GetFirstSectionBetween(isExpected, start, end, out actureStart, out actureEnd);
         }
 
-        public void GetMaxDownloadedSectionBetween(long start, long end, out long actureStart, out long actureEnd)
+        public void GetMaxSectionBetween(bool isExpected, long start, long end, out long actureStart, out long actureEnd)
         {
-            actureStart = -1;
-            actureEnd = -1;
-            long currentStart = -1;
-            int startIndex = (int)(start / _config.sectionLength);
-            int endIndex = (int)(end / _config.sectionLength);
-            for (int i = startIndex; i <= endIndex; i++)
-            {
-                FileSection sect = _config.sections[i];
-                if (currentStart < 0)
-                {
-                    if (sect.downloadedByte > 0 && sect.downloadedByte + sect.startByte > start)
-                    {
-                        currentStart = Math.Max(sect.startByte, start);
-                    }
-                }
-                if (currentStart >= 0)
-                {
-                    if (sect.downloadedByte < sect.endByte - sect.startByte + 1 || _config.sectionLength - 1 == i || _config.sections[i + 1].downloadedByte == 0)
-                    {
-                        long currentEnd = Math.Min(sect.startByte + sect.downloadedByte - 1, end);
-                        if (actureEnd - actureStart < currentEnd - currentStart)
-                        {
-                            actureEnd = currentEnd;
-                            actureStart = currentStart;
-                            currentStart = -1;
-                        }
-                    }
-                }
-            }
+            _config.GetMaxSectionBetween(isExpected, start, end, out actureStart, out actureEnd);
+        }
+
+        public void ReserveSection(long start, long end)
+        {
+            _config.ExpandExpectedSection(start, end);
+        }
+
+        public void CommitSection(long start, long end)
+        {
+            
         }
 
         public long GetFileBits(long start, long end, byte[] buffer, int offset)
@@ -392,7 +531,7 @@ namespace FileService
         {
             SourceFile res = new SourceFile();
             var _file = File.Open(fn, FileMode.Open, FileAccess.Read);
-            res._config = FileDescripter.CreateFromFile(fn, 51200000, 16);
+            res._config = FileDescripter.CreateFromFile(fn);
             return res;
         }
 
