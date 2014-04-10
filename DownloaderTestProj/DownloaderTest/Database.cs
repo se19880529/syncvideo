@@ -104,6 +104,13 @@ namespace FileService
         }
     }
 
+    /*
+     *  思路：FileSection存储文件的一个区域，FileSectionContainer存储一系列区域，主要功能是将现有区域和给定区域融合
+     *  FileDescripter是文件的描述，保存了文件的实际下载区域和等待下载的区域。主要功能是增加等待下载区域，改变等待下载区域（将oldstart-oldend之间的区域替换成start-end的区域），融合已下载区域 该结构可以保存至文件，下次打开继续下载
+     *  SourceFile表示文件源，可以是正在下载的文件，空文件和完整的视频文件。外界首先调用区域获取函数获取一个正在下载区段中的合适的空区域，然后ReserveSection来将其保存到下载中区段。然后开始下载
+     *  下载完成以后，调用CommitSection，给一个小于之前给定区段的区域（这是必然的，下载不可能多下，只可能少下），CommitSection的同时就释放了Reserve时的区域与传入区域作差的区域，这些区域之后就成了下载中区段里的空区域
+     * 
+     */
     public class FileSection
     {
         public long startByte;
@@ -296,11 +303,17 @@ namespace FileService
         //获取边界section的函数(内部函数)
         //CompareMethod: CompareMethodLess: 最后一个小于等于pos， CompareMethodLarge: 第一个大于等于pos
         //SelectMethod: SelectMethodStartPosition: pos和section的start相比, SelectMethodEndPosition: pos和section的end相比
+        //返回：-1 未找到
         long _GetBorderSection(long pos, int CompareMethod, int SelectMethod)
         {
             if (sections.Length == 0)
                 return -1;
-            long l = 0, h = GetSectionCount() - 1;
+            long l = -1, h = GetSectionCount() - 1;
+            if (CompareMethod == CompareMethodLarge)
+            {
+                l = 0;
+                h = GetSectionCount();
+            }
             long m = 0;
             long v = 0;
             while (h > l)
@@ -356,26 +369,8 @@ namespace FileService
                     m = l;
                     break;
             }
-            switch (SelectMethod)
-            {
-                case SelectMethodEndPosition:
-                    v = sections[m].endByte;
-                    break;
-                default:
-                    v = sections[m].startByte;
-                    break;
-            }
-            switch (CompareMethod)
-            {
-                case CompareMethodLess:
-                    if (v > pos)
-                        return -1;
-                    break;
-                default:
-                    if (v < pos)
-                        return -1;
-                    break;
-            }
+            if (m == sections.Length || m == -1)
+                return -1;
             return m;
         }
     }
@@ -483,6 +478,7 @@ namespace FileService
         const string configFileExt = "cfg";
         FileDescripter _config;
         FileStream _file;
+        List<FileSection> _commitList = new List<FileSection>();            //start 从小到大
 
         public FileDescripter GetDescripter()
         {
@@ -504,14 +500,46 @@ namespace FileService
             _config.GetMaxSectionBetween(isExpected, start, end, out actureStart, out actureEnd);
         }
 
-        public void ReserveSection(long start, long end)
+        public bool ReserveSection(long start, long end)
         {
+            int l = -1, h = _commitList.Count - 1;
+            while (h > l)
+            {
+                int m = (l + h + 1) / 2;
+                if (_commitList[m].endByte > start)
+                    h = m - 1;
+                else
+                    l = m;
+            }
+            if (h + 1 < _commitList.Count && _commitList[h + 1].startByte <= end )
+            {
+                return false;
+            }
+            if (h >= 0 && _commitList[h].endByte == start)
+                return false;
+            _commitList.Insert(h + 1, new FileSection { endByte = end, startByte = start });
+
             _config.ExpandExpectedSection(start, end);
+            return true;
         }
 
         public void CommitSection(long start, long end)
         {
-            
+            int l = -1, h = _commitList.Count - 1;
+            while (h > l)
+            {
+                int m = (l + h + 1) / 2;
+                if (_commitList[m].startByte > start)
+                    h = m - 1;
+                else
+                    l = m;
+            }
+            if (_commitList.Count >= l && h >= 0 && _commitList[h].endByte >= end)
+            {
+                FileSection fs = _commitList[l];
+                _commitList.RemoveAt(l);
+                _config.ModifyExpectedSection(fs.startByte, fs.endByte, start, end);
+            }
         }
 
         public long GetFileBits(long start, long end, byte[] buffer, int offset)
