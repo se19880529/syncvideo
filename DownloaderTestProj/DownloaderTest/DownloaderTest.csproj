@@ -84,6 +84,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <Compile Include="Protocol.cs" />
+    <Compile Include="Server.cs" />
     <Compile Include="ThreadPool.cs" />
     <Compile Include="Utility.cs" />
   </ItemGroup>

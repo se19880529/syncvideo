@@ -45,7 +45,7 @@ namespace FileService
         public long queryStart;
         public int queryLength;
         public long actureStart;
-        public long actureLength;
+        public int actureLength;
         public ShareInfoRe() : base(TYPE) { }
         public override void DoMarshal(ByteStream stream)
         {
@@ -130,42 +130,55 @@ namespace FileService
                 FileSendContext data = context as FileSendContext;
                 if (data != null)
                 {
-                    int currentStart = data.start;
                     SourceFile file = server._file;
-                    FileSection section = file.GetDescripter().sections[data.sectionid];
                     byte[] buffer = new byte[1024];              //buffer of send
-                    while (currentStart < data.start + data.length)
+                    long ptr = data.start;
+                    while (data.length > 0)
                     {
-                        long start = section.startByte + currentStart;
-                        long end = Math.Min(section.endByte, currentStart + buffer.Length);
-                        if (end < start)
+                        long start, end;
+                        file.GetFirstSectionBetween(false, ptr, ptr + data.length - 1, out start, out end);
+                        if (start < 0 || end < 0)
                         {
-                            //a error occured
-                            DownloadContent dc = new DownloadContent();
-                            dc.flag = 3;
+                            DownloadContent dc = new DownloadContent { flag = 3 };
                             byte[] bits = dc.ToByteArray();
                             _manager.Send(data.socket, bits, bits.Length);
                             break;
                         }
-                        else
+                        while (start <= end)
                         {
-                            //send file data
-                            long len = file.GetFileBits(start, end, buffer, 0);
-                            currentStart = (int)(end + 1 - section.startByte);
-                            DownloadContent dc = new DownloadContent();
-                            dc.flag = 0;
-                            if (end >= section.endByte)
-                                dc.flag = 1;
-                            dc.start = start;
-                            dc.data = new byte[len];
-                            Array.Copy(buffer, 0, dc.data, 0, len);
-                            byte[] stream = dc.ToByteArray();
-                            _manager.Send(data.socket, stream, stream.Length);
-                            System.Threading.Thread.Sleep(0);
+                            long begin = start;
+                            long last = Math.Min(end, start + buffer.Length - 1);
+                            if (end < start)
+                            {
+                                //a error occured
+                                DownloadContent dc = new DownloadContent();
+                                dc.flag = 3;
+                                byte[] bits = dc.ToByteArray();
+                                _manager.Send(data.socket, bits, bits.Length);
+                                break;
+                            }
+                            else
+                            {
+                                //send file data
+                                long len = file.GetFileBits(start, end, buffer, 0);
+
+                                DownloadContent dc = new DownloadContent();
+                                dc.flag = 0;
+                                if (last >= data.start + data.length - 1)
+                                    dc.flag = 1;
+                                dc.start = begin;
+                                dc.data = new byte[len];
+                                Array.Copy(buffer, 0, dc.data, 0, len);
+                                byte[] stream = dc.ToByteArray();
+                                _manager.Send(data.socket, stream, stream.Length);
+                                System.Threading.Thread.Sleep(0);
+                            }
+                            start = last + 1;
                         }
+                        data.length -= (int)(end - start + 1);
                     }
-                    server.connectedUser--;
                 }
+                server.connectedUser--;
             }
         }
         static ISocketManager _manager;
@@ -177,14 +190,6 @@ namespace FileService
         long listenSocket;
         int connectedUser;
         int maxUser;
-
-        public ShareInfo GetSectionInfo(int section)
-        {
-            ShareInfo si = new ShareInfo();
-            si.sectionAsked = section;
-            si.sectionDownloaded = _file.GetDescripter().sections[section].downloadedByte;
-            return si;
-        }
 
         public void Start()
         {
@@ -231,12 +236,17 @@ namespace FileService
                         {
                             case 0:
                                 {
-                                    _file.GetFirstDownloadedSectionBetween(pro.startByte, pro.startByte + pro.queryLength, out start, out end);
+                                    _file.GetFirstSectionBetween(false, pro.startByte, pro.startByte + pro.queryLength, out start, out end);
                                 }
                                 break;
                             case 1:
                                 {
-                                    _file.GetMaxDownloadedSectionBetween(pro.startByte, pro.startByte + pro.queryLength, out start, out end);
+                                    _file.GetMaxSectionBetween(false, pro.startByte, pro.startByte + pro.queryLength, out start, out end);
+                                }
+                                break;
+                            case 2:
+                                {
+                                    _file.GetLastSectionBetween(false, pro.startByte, pro.startByte + pro.queryLength, out start, out end);
                                 }
                                 break;
                         }
@@ -268,12 +278,17 @@ namespace FileService
                             {
                                 case 0:
                                     {
-                                        _file.GetFirstDownloadedSectionBetween(req.startByte, req.startByte + req.length, out start, out end);
+                                        _file.GetFirstSectionBetween(false, req.startByte, req.startByte + req.length, out start, out end);
                                     }
                                     break;
                                 case 1:
                                     {
-                                        _file.GetMaxDownloadedSectionBetween(req.startByte, req.startByte + req.length, out start, out end);
+                                        _file.GetMaxSectionBetween(false, req.startByte, req.startByte + req.length, out start, out end);
+                                    }
+                                    break;
+                                case 2:
+                                    {
+                                        _file.GetLastSectionBetween(false, req.startByte, req.startByte + req.length, out start, out end);
                                     }
                                     break;
                             }
