@@ -256,6 +256,26 @@ namespace FileService
                 return true;
             }
         }
+        public bool GetLargestSpaceBetween(long start, long end, out long outstart, out long outend)
+        {
+            outstart = -2;
+            outend = -1;
+            long idStart = _GetBorderSection(start, CompareMethodLess, SelectMethodStartPosition);
+            long idEnd = _GetBorderSection(end, CompareMethodLarge, SelectMethodEndPosition);
+            if (idEnd < 0 || idStart < 0)
+                return false;
+            for (long i = idStart; i < idEnd; i++)
+            {
+                long min = Math.Max(start, sections[i].endByte);
+                long max = Math.Min(end, sections[i].endByte);
+                if (max - min + 1 > outend - outstart + 1)
+                {
+                    outstart = min;
+                    outend = max;
+                }
+            }
+            return true;
+        }
         public bool GetLargestSectionBetween(long start, long end, out long outstart, out long outend)
         {
             outstart = -2;

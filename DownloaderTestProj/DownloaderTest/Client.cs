@@ -21,6 +21,17 @@ namespace FileService
             public int port;
             public int refCount;
         }
+
+        LinkedListNode<PeerInfo> _GetPeer(int order)
+        {
+            LinkedListNode<PeerInfo> ptr = _peerList.First;
+            while (ptr == null && order > 0)
+            {
+                ptr = ptr.Next;
+            }
+            return ptr;
+        }
+
         void _AddPeerRef(LinkedListNode<PeerInfo> info)
         {
             info.Value.refCount++;
@@ -64,5 +75,7 @@ namespace FileService
             _peerList.AddFirst(newInfo);
             _ShiftDownPeer(newInfo, false);
         }
+        
+
     }
 }
